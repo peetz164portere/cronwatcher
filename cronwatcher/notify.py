@@ -1,52 +1,63 @@
-"""High-level notification orchestration combining alerts + webhook."""
+"""Orchestrates failure notifications, suppression checks, and retry logic."""
 
-from __future__ import annotations
+import logging
+from typing import Optional
 
-from typing import Any
-
-from cronwatcher.alerts import init_alert_log, record_alert, should_suppress_alert
-from cronwatcher.config import load_config, should_alert
+from cronwatcher.alerts import should_suppress_alert, record_alert, init_alert_log
 from cronwatcher.webhook import notify_failure
+from cronwatcher.config import load_config, should_alert
+from cronwatcher.retry import with_retry, get_retry_config
+
+logger = logging.getLogger(__name__)
 
 
 def maybe_notify(
-    db_path: str,
     job_name: str,
-    run_id: int,
     exit_code: int,
     duration: float,
-    output: str = "",
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Evaluate alert rules and send a webhook notification if warranted.
+    output: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> bool:
+    """Send a webhook alert for a failed job if conditions are met.
 
-    Returns a dict describing what action was taken.
+    Returns True if a notification was sent, False otherwise.
     """
-    init_alert_log(db_path)
-
-    if exit_code == 0:
-        return {"action": "skipped", "reason": "exit_code_ok"}
-
-    config = load_config(config_path) if config_path else {}
+    config = load_config()
 
     if not should_alert(config, exit_code):
-        return {"action": "skipped", "reason": "alert_rule_suppressed"}
+        logger.debug("[notify] alert suppressed by config for job=%s exit_code=%d", job_name, exit_code)
+        return False
 
-    cooldown = int(config.get("alert_cooldown_seconds", 3600))
-    if should_suppress_alert(db_path, job_name, cooldown=cooldown):
-        return {"action": "skipped", "reason": "cooldown_active"}
-
-    webhook_url: str | None = config.get("webhook_url")
+    webhook_url: Optional[str] = config.get("webhook_url")
     if not webhook_url:
-        return {"action": "skipped", "reason": "no_webhook_configured"}
+        logger.warning("[notify] no webhook_url configured, skipping notification")
+        return False
 
-    notify_failure(
-        webhook_url=webhook_url,
-        job_name=job_name,
-        exit_code=exit_code,
-        duration=duration,
-        output=output,
-    )
+    init_alert_log(db_path=db_path)
 
-    record_alert(db_path, job_name, run_id)
-    return {"action": "notified", "webhook_url": webhook_url}
+    if should_suppress_alert(job_name, config, db_path=db_path):
+        logger.info("[notify] alert suppressed by cooldown for job=%s", job_name)
+        return False
+
+    retry_cfg = get_retry_config(config)
+
+    try:
+        with_retry(
+            fn=lambda: notify_failure(
+                webhook_url=webhook_url,
+                job_name=job_name,
+                exit_code=exit_code,
+                duration=duration,
+                output=output,
+            ),
+            label=f"webhook:{job_name}",
+            exceptions=(Exception,),
+            **retry_cfg,
+        )
+    except Exception as exc:
+        logger.error("[notify] failed to send webhook for job=%s: %s", job_name, exc)
+        return False
+
+    record_alert(job_name, db_path=db_path)
+    logger.info("[notify] alert sent for job=%s", job_name)
+    return True
