@@ -68,3 +68,12 @@ def test_alert_isolation_between_jobs(tmp_db):
     record_alert(tmp_db, "job-a", run_id=1)
     assert should_suppress_alert(tmp_db, "job-b") is False
     assert should_suppress_alert(tmp_db, "job-a") is True
+
+
+def test_should_suppress_alert_exactly_at_cooldown_boundary(tmp_db, monkeypatch):
+    """Alert exactly at the cooldown boundary should not be suppressed."""
+    record_alert(tmp_db, "backup-job", run_id=1)
+    # Simulate time at exactly the cooldown boundary
+    boundary = time.time() + DEFAULT_COOLDOWN_SECONDS
+    monkeypatch.setattr("cronwatcher.alerts.time.time", lambda: boundary)
+    assert should_suppress_alert(tmp_db, "backup-job") is False
