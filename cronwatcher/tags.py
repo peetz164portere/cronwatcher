@@ -52,3 +52,16 @@ def get_jobs_by_tag(conn: sqlite3.Connection, tag: str) -> List[str]:
 def clear_tags(conn: sqlite3.Connection, job_name: str) -> None:
     conn.execute("DELETE FROM job_tags WHERE job_name = ?", (job_name,))
     conn.commit()
+
+
+def rename_job(conn: sqlite3.Connection, old_name: str, new_name: str) -> int:
+    """Update all tag records when a job is renamed.
+
+    Returns the number of rows updated.
+    """
+    cur = conn.execute(
+        "UPDATE job_tags SET job_name = ? WHERE job_name = ?",
+        (new_name, old_name),
+    )
+    conn.commit()
+    return cur.rowcount
