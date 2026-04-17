@@ -65,3 +65,9 @@ def rename_job(conn: sqlite3.Connection, old_name: str, new_name: str) -> int:
     )
     conn.commit()
     return cur.rowcount
+
+
+def get_all_tags(conn: sqlite3.Connection) -> List[str]:
+    """Return a sorted list of all unique tags across all jobs."""
+    cur = conn.execute("SELECT DISTINCT tag FROM job_tags ORDER BY tag")
+    return [row[0] for row in cur.fetchall()]
