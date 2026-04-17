@@ -57,3 +57,22 @@ def should_suppress_alert(
     if last is None:
         return False
     return (time.time() - last) < cooldown
+
+
+def clear_alert_history(db_path: str, job_name: str) -> int:
+    """Delete all alert log entries for a job.
+
+    Useful when resetting a job's alert state manually, e.g. after
+    acknowledging an incident and wanting alerts to fire again immediately.
+
+    Returns the number of rows deleted.
+    """
+    conn = get_connection(db_path)
+    cur = conn.execute(
+        "DELETE FROM alert_log WHERE job_name = ?",
+        (job_name,),
+    )
+    conn.commit()
+    deleted = cur.rowcount
+    conn.close()
+    return deleted
