@@ -75,6 +75,20 @@ def test_clear_stale_locks_keeps_recent(conn):
     assert get_lock(conn, "newjob") is not None
 
 
+def test_clear_stale_locks_mixed(conn):
+    # one stale, one recent — only the stale one should be removed
+    conn.execute(
+        "INSERT INTO run_locks (job_name, pid, locked_at) VALUES (?, ?, ?)",
+        ("stale", 10, time.time() - 7200),
+    )
+    conn.commit()
+    acquire_lock(conn, "fresh", pid=20)
+    removed = clear_stale_locks(conn, max_age_seconds=3600)
+    assert removed == 1
+    assert get_lock(conn, "stale") is None
+    assert get_lock(conn, "fresh") is not None
+
+
 def test_reacquire_after_release(conn):
     acquire_lock(conn, "job", pid=1)
     release_lock(conn, "job")
