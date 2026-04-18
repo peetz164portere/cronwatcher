@@ -1,64 +1,71 @@
-import sys
+"""Main CLI entry point for cronwatcher."""
+
 import click
 from cronwatcher.storage import init_db, record_start, record_finish, fetch_history
-from cronwatcher.config import load_config, should_alert
-from cronwatcher.webhook import notify_failure
+from cronwatcher.notify import maybe_notify
+from cronwatcher.formatter import format_history_table
+from cronwatcher.cli_digest import digest_cmd
+from cronwatcher.cli_schedule import check_schedule_cmd
+from cronwatcher.cli_tags import tags_cmd
+from cronwatcher.cli_export import export_cmd
+from cronwatcher.cli_prune import prune_cmd
+from cronwatcher.cli_search import search_cmd, find_cmd, stats_cmd
+from cronwatcher.cli_compare import compare_cmd
+import subprocess
+import time
 
 
 @click.group()
 def cli():
-    """cronwatcher — monitor cron job execution history and alert on failures."""
-    init_db()
+    """cronwatcher — monitor cron job execution and alert on failures."""
+    pass
 
 
 @cli.command()
 @click.argument("job_name")
 @click.argument("command")
-def run(job_name, command):
-    """Run a command as a tracked cron job."""
-    import subprocess
-    import time
-
-    run_id = record_start(job_name, command)
-    click.echo(f"[cronwatcher] Starting job '{job_name}' (run_id={run_id})")
-
+@click.option("--db", default="cronwatcher.db", help="Path to SQLite DB")
+def run(job_name: str, command: str, db: str):
+    """Run a command and record its execution."""
+    conn = init_db(db)
+    run_id = record_start(conn, job_name)
     start = time.time()
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    duration = time.time() - start
-
-    exit_code = result.returncode
-    output = result.stdout + result.stderr
-
-    record_finish(run_id, exit_code, output)
-
-    if exit_code != 0:
-        click.echo(f"[cronwatcher] Job '{job_name}' FAILED (exit_code={exit_code})")
-        config = load_config()
-        if should_alert(config, job_name):
-            notify_failure(config, job_name, command, exit_code, duration, output)
-    else:
-        click.echo(f"[cronwatcher] Job '{job_name}' succeeded in {duration:.2f}s")
-
-    sys.exit(exit_code)
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        duration = time.time() - start
+        status = "success" if result.returncode == 0 else "failure"
+        output = result.stdout + result.stderr
+        record_finish(conn, run_id, status, output, duration)
+        if status == "failure":
+            maybe_notify(conn, job_name, run_id, output, db)
+        click.echo(f"[{status}] {job_name} ({duration:.1f}s)")
+    except Exception as e:
+        duration = time.time() - start
+        record_finish(conn, run_id, "failure", str(e), duration)
+        maybe_notify(conn, job_name, run_id, str(e), db)
+        raise
 
 
 @cli.command()
 @click.argument("job_name", required=False)
-@click.option("--limit", default=20, show_default=True, help="Number of records to show")
-def history(job_name, limit):
-    """Show execution history for a job (or all jobs)."""
-    rows = fetch_history(job_name=job_name, limit=limit)
-    if not rows:
-        click.echo("No history found.")
-        return
+@click.option("--db", default="cronwatcher.db", help="Path to SQLite DB")
+@click.option("--limit", default=20, help="Number of rows to show")
+def history(job_name: str, db: str, limit: int):
+    """Show execution history."""
+    conn = init_db(db)
+    rows = fetch_history(conn, job_name=job_name, limit=limit)
+    click.echo(format_history_table(rows))
 
-    click.echo(f"{'ID':<6} {'Job':<20} {'Status':<10} {'Exit':<6} {'Started':<22} {'Duration'}")
-    click.echo("-" * 80)
-    for row in rows:
-        run_id, name, cmd, status, exit_code, started_at, finished_at, duration = row
-        duration_str = f"{duration:.2f}s" if duration is not None else "running"
-        exit_str = str(exit_code) if exit_code is not None else "-"
-        click.echo(f"{run_id:<6} {name:<20} {status:<10} {exit_str:<6} {str(started_at):<22} {duration_str}")
+
+cli.add_command(digest_cmd, "digest")
+cli.add_command(check_schedule_cmd, "check-schedule")
+cli.add_command(tags_cmd, "tags")
+cli.add_command(export_cmd, "export")
+cli.add_command(prune_cmd, "prune")
+cli.add_command(search_cmd, "search")
+cli.add_command(find_cmd, "find")
+cli.add_command(stats_cmd, "stats")
+cli.add_command(compare_cmd, "compare")
 
 
 if __name__ == "__main__":
