@@ -14,6 +14,10 @@ from cronwatcher.webhook import send_webhook
 @click.option("--db", default=None, help="Path to cronwatcher DB (overrides config).")
 def digest_cmd(hours: int, output_format: str, send: bool, db: str) -> None:
     """Print a summary digest of cron job activity."""
+    if hours <= 0:
+        click.echo("[error] --hours must be a positive integer.", err=True)
+        raise SystemExit(1)
+
     config = load_config()
     db_path = db or config.get("db_path", "cronwatcher.db")
 
