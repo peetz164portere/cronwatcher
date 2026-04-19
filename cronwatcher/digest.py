@@ -66,6 +66,14 @@ def format_digest_text(digest: dict) -> str:
     return "\n".join(lines)
 
 
+def get_most_failing_job(digest: dict) -> Optional[str]:
+    """Return the job name with the highest failure count, or None if no jobs."""
+    jobs = digest.get("jobs", {})
+    if not jobs:
+        return None
+    return max(jobs, key=lambda name: jobs[name]["failures"])
+
+
 def _parse_dt(value: str) -> datetime:
     """Parse an ISO datetime string, tolerating missing microseconds."""
     for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
