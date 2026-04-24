@@ -36,6 +36,12 @@ def search_history(conn, job_name: Optional[str] = None, status: Optional[str] =
     return cur.fetchall()
 
 
+def get_job_names(conn):
+    """Return a sorted list of all distinct job names in the history."""
+    cur = conn.execute("SELECT DISTINCT job_name FROM runs ORDER BY job_name")
+    return [row[0] for row in cur.fetchall()]
+
+
 def count_by_status(conn, job_name: Optional[str] = None):
     """Return dict with counts per status for a job or all jobs."""
     base = "FROM runs"
