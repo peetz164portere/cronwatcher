@@ -77,3 +77,16 @@ def test_should_suppress_alert_exactly_at_cooldown_boundary(tmp_db, monkeypatch)
     boundary = time.time() + DEFAULT_COOLDOWN_SECONDS
     monkeypatch.setattr("cronwatcher.alerts.time.time", lambda: boundary)
     assert should_suppress_alert(tmp_db, "backup-job") is False
+
+
+def test_record_alert_different_run_ids(tmp_db):
+    """Each recorded alert should reflect the most recent run_id's timestamp."""
+    record_alert(tmp_db, "backup-job", run_id=10)
+    first_time = get_last_alert_time(tmp_db, "backup-job")
+    time.sleep(0.05)
+    record_alert(tmp_db, "backup-job", run_id=20)
+    second_time = get_last_alert_time(tmp_db, "backup-job")
+    assert second_time is not None
+    assert first_time is not None
+    # The latest alert time should be >= the first
+    assert second_time >= first_time
