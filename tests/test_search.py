@@ -16,6 +16,14 @@ def conn(tmp_path):
 
 
 def _insert(conn, job, exit_code, offset_hours=0):
+    """Insert a test run record into the database.
+
+    Args:
+        conn: SQLite connection.
+        job: Job name string.
+        exit_code: Exit code (None means still running).
+        offset_hours: How many hours in the past to set started_at.
+    """
     started = (datetime.utcnow() - timedelta(hours=offset_hours)).isoformat()
     finished = datetime.utcnow().isoformat() if exit_code is not None else None
     conn.execute(
@@ -61,6 +69,15 @@ def test_search_since_filter(conn):
     since = datetime.utcnow() - timedelta(hours=1)
     rows = search_history(conn, since=since)
     assert all(r["job_name"] == "new" for r in rows)
+
+
+def test_search_no_filters_returns_all(conn):
+    """Calling search_history with no filters should return all rows."""
+    _insert(conn, "alpha", 0)
+    _insert(conn, "beta", 1)
+    _insert(conn, "gamma", None)
+    rows = search_history(conn)
+    assert len(rows) == 3
 
 
 def test_count_by_status(conn):
