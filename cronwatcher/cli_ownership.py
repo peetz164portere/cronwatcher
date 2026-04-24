@@ -51,7 +51,7 @@ def get_cmd(job_name, as_json):
     conn = _get_conn()
     record = get_owner(conn, job_name)
     if not record:
-        click.echo(f"No owner set for '{job_name}'.")
+        click.echo(f"No owner set for '{job_name}'.", err=True)
         raise SystemExit(1)
     if as_json:
         click.echo(json.dumps(record, indent=2))
@@ -66,9 +66,16 @@ def get_cmd(job_name, as_json):
 
 @ownership_cmd.command("remove")
 @click.argument("job_name")
-def remove_cmd(job_name):
+@click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
+def remove_cmd(job_name, yes):
     """Remove ownership record for a job."""
     conn = _get_conn()
+    record = get_owner(conn, job_name)
+    if not record:
+        click.echo(f"No ownership record found for '{job_name}'.", err=True)
+        raise SystemExit(1)
+    if not yes:
+        click.confirm(f"Remove ownership record for '{job_name}'?", abort=True)
     remove_owner(conn, job_name)
     click.echo(f"Ownership record removed for '{job_name}'.")
 
