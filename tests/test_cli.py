@@ -75,3 +75,14 @@ def test_history_limit(runner):
     result = runner.invoke(cli, ["history", "--limit", "3"])
     lines = [l for l in result.output.splitlines() if "loop-job" in l]
     assert len(lines) == 3
+
+
+def test_history_limit_default(runner):
+    """Ensure history returns at most the default limit when no --limit flag is given."""
+    for i in range(15):
+        runner.invoke(cli, ["run", "bulk-job", "echo x"])
+    result = runner.invoke(cli, ["history"])
+    assert result.exit_code == 0
+    lines = [l for l in result.output.splitlines() if "bulk-job" in l]
+    # Default limit should cap results to 10
+    assert len(lines) <= 10
