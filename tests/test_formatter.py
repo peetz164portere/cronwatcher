@@ -25,6 +25,14 @@ def test_format_duration_none():
     assert format_duration(None) == "—"
 
 
+def test_format_duration_zero():
+    assert format_duration(0.0) == "0.0s"
+
+
+def test_format_duration_exactly_one_minute():
+    assert format_duration(60.0) == "1m 0s"
+
+
 def test_format_timestamp_valid():
     result = format_timestamp("2024-05-10T14:32:00")
     assert result == "2024-05-10 14:32:00"
@@ -73,6 +81,11 @@ def test_format_row_running_symbol():
 def test_format_row_no_exit_code():
     row = format_row(_make_record(exit_code=None), use_color=False)
     assert "exit=—" in row
+
+
+def test_format_row_contains_duration():
+    row = format_row(_make_record(duration=12.5), use_color=False)
+    assert "12.5s" in row
 
 
 def test_format_history_table_empty():
